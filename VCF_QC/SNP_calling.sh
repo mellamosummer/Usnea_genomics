@@ -7,7 +7,7 @@
 # ============================================================
 
 WORKDIR="/home/FM/sblanco/GWAS_8072026"
-REF_NAME="uflo"
+REF_NAME="uflo" #change to usub and run separately to run again with different reference
 MD_DIR="01_markdup"
 RG_DIR="02_readgroups"
 FB_DIR="03_freebayes"
