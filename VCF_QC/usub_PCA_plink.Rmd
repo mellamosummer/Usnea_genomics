@@ -1,0 +1,113 @@
+---
+title: "PCA_usub"
+author: "Summer Blanco"
+date: "2026-08-17"
+output:
+  html_document: default
+  pdf_document: default
+editor_options:
+  markdown:
+    wrap: 72
+---
+
+# [Setup]{.underline}
+
+```{r setup}
+library(tidyverse)
+setwd("/home/FM/sblanco/GWAS_8072026/usub/05_filtering")
+```
+
+# [Read in data]{.underline}
+
+Eigenvec and eigenval files generated from a filtered VCF file using
+Plink. VCF filters included:\
+QUAL=30; MIN_DEPTH=10; MAX_DEPTH=250; MAF=0.10; MISS=0.75. Filtered VCF
+had 10,962 SNPs (aligned to uflo ref genome). After pruning, 17,737 of
+19,105 variants were removed, leaving 1,368 remaining variants.
+
+```{r data}
+pca <-read_table("usub_75_pruned.eigenvec", col_names = FALSE)
+eigenval <- scan("usub_75_pruned.eigenval")
+```
+
+# [Clean data]{.underline}
+
+## *Remove nuisance column and set names*
+
+```{r clean}
+pca <- pca[,-1]
+names(pca)[1] <- "ind" 
+names(pca)[2:ncol(pca)] <- paste0("PC", 1:(ncol(pca)-1))
+```
+
+## *Assign labels*
+
+### **Species labels**
+
+```{r names}
+spp <- rep(NA, length(pca$ind))
+spp[grep("UFLO", pca$ind)] <- "Usnea florida"
+spp[grep("USUB", pca$ind)] <- "Usnea subfloridana"
+```
+
+### Locations labels
+
+```{r location}
+loc <- rep(NA, length(pca$ind)) 
+loc[grep("11_0", pca$ind)] <- "Russia" 
+loc[grep("09_", pca$ind)] <- "Latvia" 
+loc[grep("UFLO_0", pca$ind)] <- "Latvia" 
+loc[grep("10_0", pca$ind)] <- "Latvia" 
+loc[grep("08_", pca$ind)] <- "Latvia" 
+loc[grep("14", pca$ind)] <- "Belarus" 
+loc[grep("FR", pca$ind)] <- "Austria" 
+loc[grep("04_0", pca$ind)] <- "Estonia" 
+loc[grep("05_", pca$ind)] <- "Estonia" 
+loc[grep("06_", pca$ind)] <- "Estonia" 
+loc[grep("06_", pca$ind)] <- "Estonia"
+loc[grep("FG", pca$ind)] <- "Austria"
+```
+
+## Remake data.frame
+
+```{r tibble}
+pca <- as_tibble(data.frame(pca, spp))
+```
+
+# [Plot variance]{.underline}
+
+## *Convert to percentage variance explained*
+
+```{r calcvariance}
+pve <- data.frame(PC = 1:20, pve = eigenval/sum(eigenval)*100)
+```
+
+## *Plot pve*
+
+```{r plotPC}
+ggplot(pve, aes(PC, pve)) + geom_bar(stat = "identity") + ylab("Percentage variance explained") + theme_light()
+```
+
+## *Calculate the cumulative sum of the percentage variance explained*
+
+```{r cumsum}
+cumsum(pve$pve)
+```
+
+> PC1 & PC2 explain \~17% of the variance observed
+
+# [Plot PCA]{.underline}
+
+## *By species*
+
+```{r plotPCAspecies}
+ggplot(pca, aes(PC1, PC2, shape = spp, col=spp)) + geom_point(size = 3) + coord_equal() + theme_light() + xlab(paste0("PC1 (", signif(pve$pve[1], 3), "%)")) + xlab(paste0("PC1 (", signif(pve$pve[1], 3), "%)")) + ylab(paste0("PC2 (", signif(pve$pve[2], 3), "%)"))
+```
+
+## *By location*
+
+```{r plotPCAlocation}
+ggplot(pca, aes(PC1, PC2, shape = spp, col=loc)) + geom_point(size = 3) + scale_colour_manual(values = c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2")) + coord_equal() + theme_light() + xlab(paste0("PC1 (", signif(pve$pve[1], 3), "%)")) + xlab(paste0("PC1 (", signif(pve$pve[1], 3), "%)")) + ylab(paste0("PC2 (", signif(pve$pve[2], 3), "%)"))
+```
+
+> Some slight structure based on region X species?
