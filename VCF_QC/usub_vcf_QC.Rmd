@@ -1,0 +1,133 @@
+---
+title: "VCF QC — Usnea Resequencing Subset"
+author: "S. Blanco"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+## Setup
+
+Load tidyverse and set the working directory.
+
+```{r load-packages}
+# install.packages("tidyverse")  # uncomment if not already installed
+library(tidyverse)
+```
+
+```{r set-wd}
+setwd("/home/FM/sblanco/GWAS_8072026/usub/04_freebayes/QC")
+```
+
+QC visualizations for a subset of the VCF from 35 *Usnea* resequencing samples.
+53,653 SNPs were randomly subsampled out of 4,496,909 SNPs for QC purposes.
+
+## Variant Quality
+
+Phred quality score for each site. ~24,000 SNPs have QUAL < 30 (~50%).
+
+```{r variant-quality}
+var_qual <- read_delim("usub_vcf_subset.lqual", delim = "\t",
+                        col_names = c("chr", "pos", "qual"), skip = 1)
+
+summary(var_qual$qual)
+
+a <- ggplot(var_qual, aes(qual)) +
+  geom_histogram(fill = "dodgerblue1", colour = "black", alpha = 0.3)
+a + theme_light() + xlim(0, 100000)
+```
+
+> Decision: set min QUAL to 30.
+
+## Variant Mean Depth
+
+Mean number of reads mapped to each position.
+
+```{r variant-depth}
+var_depth <- read_delim("usub_vcf_subset.ldepth.mean", delim = "\t",
+                         col_names = c("chr", "pos", "mean_depth", "var_depth"), skip = 1)
+
+a <- ggplot(var_depth, aes(mean_depth)) +
+  geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3)
+a + theme_light()
+
+summary(var_depth$mean_depth)
+
+a + theme_light() + xlim(0, 500)
+```
+
+> Decision: set min depth to 10, max depth to ~2x mean (124.52 * 2 ≈ 250).
+> This handles outliers that could reflect paralogous or repetitive regions.
+
+## Variant Missingness
+
+Proportion of individuals lacking a genotype at each call site.
+
+```{r variant-missingness}
+var_miss <- read_delim("usub_vcf_subset.lmiss", delim = "\t",
+                        col_names = c("chr", "pos", "nchr", "nfiltered", "nmiss", "fmiss"), skip = 1)
+
+a <- ggplot(var_miss, aes(fmiss)) +
+  geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3)
+a + theme_light()
+
+summary(var_miss$fmiss)
+```
+
+> Typically 75–95% completeness is used as a threshold. Going with 90% (MISS = 0.10).
+
+## Minor Allele Frequency
+
+```{r maf}
+var_freq <- read_delim("usub_vcf_subset.frq", delim = "\t",
+                        col_names = c("chr", "pos", "nalleles", "nchr", "a1", "a2"), skip = 1)
+
+var_freq$maf <- var_freq %>%
+  select(a1, a2) %>%
+  apply(1, function(z) min(z))
+
+a <- ggplot(var_freq, aes(maf)) +
+  geom_density(fill = "dodgerblue1", colour = "black", alpha = 0.3)
+a + theme_light()
+
+summary(var_freq$maf)
+```
+
+> A large number of variants have low-frequency alleles. Will set MAF threshold to 0.1.
+
+## Mean Depth Per Individual
+
+```{r ind-depth}
+ind_depth <- read_delim("usub_vcf_subset.idepth", delim = "\t",
+                         col_names = c("ind", "nsites", "depth"), skip = 1)
+
+a <- ggplot(ind_depth, aes(depth)) +
+  geom_histogram(fill = "dodgerblue1", colour = "black", alpha = 0.3)
+a + theme_light()
+
+summary(ind_depth$depth)
+```
+
+> Sequencing depth ranges from 12 to 348 — a bit of spread there.
+
+## Proportion of Missing Data Per Individual
+
+```{r ind-missingness}
+ind_miss <- read_delim("usub_vcf_subset.imiss", delim = "\t",
+                        col_names = c("ind", "ndata", "nfiltered", "nmiss", "fmiss"), skip = 1)
+
+a <- ggplot(ind_miss, aes(fmiss)) +
+  geom_histogram(fill = "dodgerblue1", colour = "black", alpha = 0.3)
+a + theme_light()
+
+summary(ind_miss$fmiss)
+```
+
+> Missingness per individual ranges from 0.03 to 0.20.
