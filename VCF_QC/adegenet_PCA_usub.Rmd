@@ -1,0 +1,110 @@
+---
+title: "Felix_PCA_script"
+author: "Summer Blanco"
+date: "2026-08-17"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# Setup
+
+## *Load libraries*
+
+```{r libs}
+library(vcfR)
+library(ade4)
+library(adegenet)
+library(ggplot2)
+library(dplyr)
+library(RColorBrewer)
+```
+
+# Prepare and parse vcf
+
+## *Read in VCF*
+
+```{r vcf}
+vcf <- read.vcfR("/home/FM/sblanco/GWAS_8072026/usub/05_filtering/usub_filtered_miss0_75.vcf.gz")
+```
+
+## *Assign samples*
+
+```{r assign}
+vcf_samples <- colnames(vcf@gt)[-1]
+
+pop.file <- data.frame(
+  sample = vcf_samples,
+  pop  = substr(vcf_samples, 1, 4),
+  stringsAsFactors = FALSE
+)
+
+pop.file <- pop.file[match(vcf_samples, pop.file$sample), ]
+
+all(pop.file$sample == vcf_samples) #shoould be all TRUE
+
+data.genind <- vcfR2genind(vcf, ploidy = 1, pop = pop.file$pop)
+```
+
+## *Check how much missing data*
+
+```{r missing}
+sum(is.na(data.genind$tab))
+X <- tab(data.genind, freq = TRUE, NA.method = "mean")
+```
+
+# Calculate eigenvalues
+
+```{r eigen}
+pca1 <- dudi.pca(X, scale = FALSE, scannf = FALSE, nf = 3) 
+barplot(pca1$eig[1:50], main = "PCA eigenvalues", col = heat.colors(50))
+percent <- pca1$eig / sum(pca1$eig) * 100 
+barplot(percent, ylab = "Genetic variance explained by eigenvectors (%)", ylim = c(0, 30), names.arg = round(percent, 1))
+```
+
+# Make PCA
+
+```{r makePCA}
+ind_coords <- as.data.frame(pca1$li) #Create a data.frame containing individual coordinates
+colnames(ind_coords) <- c("Axis1", "Axis2", "Axis3") #Rename columns of dataframe
+ind_coords$Ind <- indNames(data.genind) #Add a column with the site IDs
+ind_coords$Species <- data.genind$pop
+centroid <- aggregate(cbind(Axis1, Axis2, Axis3) ~ Species, data = ind_coords, FUN = mean) #Calculate centroid (average) position for each population
+ind_coords <- left_join(ind_coords, centroid, by = "Species", suffix = c("", ".cen")) #Add centroid coordinates to ind_coords dataframe
+ind_coords <- ind_coords %>% mutate( Axis1.cen = if_else(Species == "spec", Axis1, Axis1.cen), Axis2.cen = if_else(Species == "spec", Axis2, Axis2.cen), Axis3.cen = if_else(Species == "spec", Axis3, Axis3.cen) ) #Change axis
+```
+
+# PCA plot specifications
+
+```{r PCAdetails}
+n_pop <- nPop(data.genind)
+if (n_pop <= 9) {
+cols <- brewer.pal(max(n_pop, 3), "Set1")[1:n_pop]
+} else {
+# fallback for many groups
+cols <- colorRampPalette(brewer.pal(9, "Set1"))(n_pop)
+}
+#Custom x and y labels
+xlab <- paste("Axis 1 (", format(round(percent[1], 1), nsmall = 1), " %)", sep = "") 
+ylab <- paste("Axis 2 (", format(round(percent[2], 1), nsmall = 1), " %)", sep = "")
+
+#Custom theme for ggplot2
+ggtheme = theme(axis.text.y = element_text(colour="black", size=12),axis.text.x = element_text(colour="black", size=12), axis.title = element_text(colour="black", size=12), panel.border = element_rect(colour="black", fill=NA, linewidth=1), panel.background = element_blank(), plot.title = element_text(hjust=0.5, size=15))
+
+#Scatter plot axis 1 vs. 2
+pca_plot <- ggplot(data = ind_coords, aes(x = Axis1, y = Axis2)) + geom_hline(yintercept = 0) + geom_vline(xintercept = 0) + geom_segment(aes(xend = Axis1.cen, yend = Axis2.cen, colour = Species), show.legend = FALSE) + geom_point(aes(fill = Species), shape = 21, size = 3, show.legend = TRUE) + scale_fill_manual(values = cols) + scale_colour_manual(values = cols) + labs(x = xlab, y = ylab) + ggtitle("Usnea PCA") + ggtheme
+
+#Add ellipses, excluding 'spec'
+ind_coords_for_ellipses <- ind_coords %>% filter(Species != "spec")
+
+pca_plot_with_ellipses <- pca_plot + stat_ellipse( data = ind_coords_for_ellipses, aes(group = Species, color = Species))
+```
+
+# Plot PCA
+
+```{r plotPCA}
+print(pca_plot_with_ellipses)
+```
+
+> Same result as PCA using PLINK – overlap between 2 species.
